@@ -5,6 +5,9 @@
 require 'faraday'
 require 'socket'
 require 'faraday_middleware'
+require 'optparse'
+require 'require_relative'
+require_relative 'basic_http_banner_helper'
 
 def banner_request(url)
     result = {}
@@ -18,7 +21,7 @@ def banner_request(url)
         result['server'] = response.headers['server']
         result['status_code'] = response.status
         begin
-            result['title'] = response.body.scan(/<title>(.*?)<\/title>/)
+            result['title'] = response.body.scan(/<title>(.*?)<\/title>/)[0][0]
         rescue => exception
             result['title'] = ''
         end
@@ -57,13 +60,34 @@ def regex_ip(line)
     return (/((\d|[1-9]\d|1\d{2}|2[0-4]\d|25[0-5])\.){3}(\d|[1-9]\d|1\d{2}|2[0-4]\d|25[0-5])$/).match(line).to_s.strip
 end
 
-filename = 'passivetotal_logitech-com_subdomains.csv'
-
-
-lines = add_domain(filename)
-subdomains = []
-for line in lines do
-    if test_subdomain(line)
-        puts banner_request("https://" + line)
+def get_info(domain)
+    if test_subdomain(domain)
+        result = banner_request("https://" + domain)
+        if result != nil
+            puts result
+        else
+            result = banner_request("http://" + domain)
+            if result != nil
+                puts result
+            end
+        end
     end
 end
+
+#filename = 'sss.txt'
+options = {}
+option_parser = OptionParser.new do |opts|
+    opts.on('-f filename', '--file filename', 'file path') do |value|
+        options[:file] = value
+    end
+end.parse!
+
+
+
+lines = add_domain(options[:file])
+subdomains = []
+pool = ThreadPool.new 8
+for line in lines do
+    pool.run { get_info(line) } 
+end
+pool.await_completion
